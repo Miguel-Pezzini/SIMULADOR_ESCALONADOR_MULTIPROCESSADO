@@ -1,0 +1,122 @@
+from pathlib import Path
+
+import pytest
+from testes.suporte import burst_cpu, es, fecha_makespan, gravar_carga, processo, rodar
+
+from simulador.cli import main
+from simulador.saida import gravar
+
+
+def test_rr_quantum_2_no_exemplo_sem_memoria(fixtures: Path) -> None:
+    resultado = rodar(
+        fixtures / "exemplo_7_1.json",
+        sched="rr",
+        quantum=2,
+        ignorar_memoria=True,
+        custo_troca=1,
+    )
+    assert resultado.makespan == 16
+    assert {p.pid: p.espera for p in resultado.processos} == {1: 8, 2: 9, 3: 4}
+    assert {p.pid: p.resposta for p in resultado.processos} == {1: 0, 2: 3, 3: 4}
+    assert {p.pid: p.turnaround for p in resultado.processos} == {1: 16, 2: 14, 3: 7}
+    assert resultado.cpus[0].trocas == 6
+    assert resultado.cpus[0].tempo_util == 10
+    fecha_makespan(resultado)
+
+
+def test_quantum_no_fim_com_fila_vazia_nao_cobra_troca(tmp_path: Path) -> None:
+    caminho = tmp_path / "sozinho.json"
+    gravar_carga(caminho, [processo(1, 0, [burst_cpu(5)])])
+    resultado = rodar(caminho, sched="rr", quantum=2, ignorar_memoria=True, custo_troca=1)
+    com_log = rodar(caminho, sched="rr", quantum=2, ignorar_memoria=True, log=True)
+    assert resultado.makespan == 6
+    assert resultado.trocas_total() == 1
+    assert resultado.cpus[0].tempo_util == 5
+    assert resultado.cpus[0].tempo_troca == 1
+    assert any("RENOVACAO_QUANTUM" in linha for linha in com_log.log)
+    fecha_makespan(resultado)
+
+
+def test_preempcao_ocorre_depois_da_chegada_no_mesmo_instante(tmp_path: Path) -> None:
+    caminho = tmp_path / "ordem.json"
+    gravar_carga(
+        caminho,
+        [
+            processo(1, 0, [burst_cpu(4)]),
+            processo(2, 2, [burst_cpu(2)]),
+        ],
+    )
+    resultado = rodar(caminho, sched="rr", quantum=2, ignorar_memoria=True, custo_troca=0)
+    termino = {p.pid: p.termino for p in resultado.processos}
+    assert termino == {2: 4, 1: 6}
+    fecha_makespan(resultado)
+
+
+def test_retorno_de_es_na_mesma_cpu_ociosa_nao_cobra_troca(tmp_path: Path) -> None:
+    caminho = tmp_path / "io.json"
+    gravar_carga(caminho, [processo(1, 0, [burst_cpu(1), es(5), burst_cpu(1)])])
+    resultado = rodar(caminho, ignorar_memoria=True, custo_troca=1)
+    assert resultado.makespan == 8
+    assert resultado.trocas_total() == 1
+    assert resultado.cpus[0].tempo_util == 2
+    assert resultado.cpus[0].tempo_ocioso == 5
+    fecha_makespan(resultado)
+
+
+def test_chegada_e_retorno_no_mesmo_instante_entram_por_pid(tmp_path: Path) -> None:
+    caminho = tmp_path / "pid.json"
+    gravar_carga(
+        caminho,
+        [
+            processo(3, 0, [burst_cpu(1), es(4), burst_cpu(1)]),
+            processo(1, 5, [burst_cpu(1)]),
+            processo(2, 5, [burst_cpu(1)], classe="longo"),
+        ],
+    )
+    resultado = rodar(caminho, ignorar_memoria=True, custo_troca=0)
+    termino = {p.pid: p.termino for p in resultado.processos}
+    assert termino[1] == 6
+    assert termino[2] == 7
+    assert termino[3] == 8
+    fecha_makespan(resultado)
+
+
+def test_quatro_cpus_e_speedup(tmp_path: Path) -> None:
+    caminho = tmp_path / "quatro.json"
+    gravar_carga(caminho, [processo(pid, 0, [burst_cpu(5)]) for pid in range(1, 5)])
+    uma = rodar(caminho, cpus=1, ignorar_memoria=True, custo_troca=1)
+    _, metricas = gravar(uma, tmp_path)
+    quatro = rodar(
+        caminho,
+        cpus=4,
+        ignorar_memoria=True,
+        custo_troca=1,
+        referencia_1cpu=str(metricas),
+    )
+    assert uma.makespan == 24
+    assert quatro.makespan == 6
+    assert quatro.speedup == pytest.approx(4)
+    assert quatro.eficiencia == pytest.approx(1)
+    for nucleo in quatro.cpus:
+        assert (nucleo.tempo_util, nucleo.tempo_troca, nucleo.tempo_ocioso) == (5, 1, 0)
+    fecha_makespan(quatro)
+
+
+def test_cli_rejeita_rr_sem_quantum(fixtures: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    codigo = main(
+        [
+            "--arquivo",
+            str(fixtures / "exemplo_7_1.json"),
+            "--cpus",
+            "1",
+            "--sched",
+            "rr",
+            "--subst",
+            "fifo",
+            "--ignorar-memoria",
+            "--saida",
+            "resultados",
+        ]
+    )
+    assert codigo == 2
+    assert "quantum" in capsys.readouterr().err
