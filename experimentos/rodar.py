@@ -53,6 +53,21 @@ CAMPOS = (
     "turnaround_longo",
     "resposta_curto",
     "resposta_longo",
+    "tempo_util",
+    "tempo_troca",
+    "tempo_ocioso",
+    "utilizacao_media",
+    *(
+        nome
+        for indice in range(4)
+        for nome in (
+            f"cpu{indice}_util",
+            f"cpu{indice}_troca",
+            f"cpu{indice}_ocioso",
+            f"cpu{indice}_trocas",
+            f"cpu{indice}_utilizacao",
+        )
+    ),
 )
 
 
@@ -175,7 +190,34 @@ def _linha(cenario: str, resultado: Resultado) -> dict[str, object]:
         "turnaround_longo": resultado.media_do_campo_na_classe("longo", "turnaround"),
         "resposta_curto": resultado.media_do_campo_na_classe("curto", "resposta"),
         "resposta_longo": resultado.media_do_campo_na_classe("longo", "resposta"),
+        **_parcelas_das_cpus(resultado),
     }
+
+
+def _parcelas_das_cpus(resultado: Resultado) -> dict[str, object]:
+    makespan = resultado.makespan
+    campos: dict[str, object] = {
+        "tempo_util": sum(cpu.tempo_util for cpu in resultado.cpus),
+        "tempo_troca": sum(cpu.tempo_troca for cpu in resultado.cpus),
+        "tempo_ocioso": sum(cpu.tempo_ocioso for cpu in resultado.cpus),
+        "utilizacao_media": sum(cpu.utilizacao(makespan) for cpu in resultado.cpus)
+        / len(resultado.cpus),
+    }
+    for indice in range(4):
+        if indice < len(resultado.cpus):
+            cpu = resultado.cpus[indice]
+            campos[f"cpu{indice}_util"] = cpu.tempo_util
+            campos[f"cpu{indice}_troca"] = cpu.tempo_troca
+            campos[f"cpu{indice}_ocioso"] = cpu.tempo_ocioso
+            campos[f"cpu{indice}_trocas"] = cpu.trocas
+            campos[f"cpu{indice}_utilizacao"] = cpu.utilizacao(makespan)
+        else:
+            campos[f"cpu{indice}_util"] = ""
+            campos[f"cpu{indice}_troca"] = ""
+            campos[f"cpu{indice}_ocioso"] = ""
+            campos[f"cpu{indice}_trocas"] = ""
+            campos[f"cpu{indice}_utilizacao"] = ""
+    return campos
 
 
 def _gravar_csv(linhas: list[dict[str, object]]) -> None:

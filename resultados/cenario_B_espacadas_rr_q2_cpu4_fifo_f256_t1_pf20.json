@@ -1,0 +1,63 @@
+{
+  "arquivo": "/home/user/SIMULADOR_ESCALONADOR_MULTIPROCESSADO/dados/cenario_B_espacadas.json",
+  "cpus": 4,
+  "sched": "rr",
+  "quantum": 2,
+  "subst": "fifo",
+  "quadros": 256,
+  "custo_troca": 1,
+  "tempo_fault": 20,
+  "ignorar_memoria": false,
+  "espera_media": 642.934,
+  "espera_max": 8367,
+  "espera_max_pid": 165,
+  "turnaround_medio": 960.673,
+  "resposta_media": 26.64,
+  "makespan": 15879,
+  "trocas_contexto": 26744,
+  "page_faults": 10997,
+  "acertos": 36239,
+  "taxa_faults": 0.23280972139893302,
+  "speedup": null,
+  "eficiencia": null,
+  "espera_curto": 420.2367049009385,
+  "espera_longo": 5851.878048780488,
+  "turnaround_curto": 626.8112617309697,
+  "turnaround_longo": 8769.780487804877,
+  "resposta_curto": 26.605839416058394,
+  "resposta_longo": 27.4390243902439,
+  "por_cpu": [
+    {
+      "indice": 0,
+      "tempo_util": 9123,
+      "tempo_troca": 6712,
+      "tempo_ocioso": 44,
+      "trocas": 6712,
+      "utilizacao": 0.9972290446501669
+    },
+    {
+      "indice": 1,
+      "tempo_util": 9133,
+      "tempo_troca": 6681,
+      "tempo_ocioso": 65,
+      "trocas": 6681,
+      "utilizacao": 0.995906543233201
+    },
+    {
+      "indice": 2,
+      "tempo_util": 9056,
+      "tempo_troca": 6697,
+      "tempo_ocioso": 126,
+      "trocas": 6697,
+      "utilizacao": 0.9920649914982052
+    },
+    {
+      "indice": 3,
+      "tempo_util": 8927,
+      "tempo_troca": 6654,
+      "tempo_ocioso": 298,
+      "trocas": 6654,
+      "utilizacao": 0.9812330751306757
+    }
+  ]
+}

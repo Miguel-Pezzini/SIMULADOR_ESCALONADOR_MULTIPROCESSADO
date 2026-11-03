@@ -15,6 +15,7 @@ def _texto(linhas: list[dict[str, object]]) -> str:
         _introducao(),
         _tabela("A", linhas),
         _tabela("B", linhas),
+        _tabela_por_cpu(linhas),
         _espera(linhas),
         _quantum(linhas),
         _speedup(linhas),
@@ -43,6 +44,10 @@ def _introducao() -> str:
             "Speedup é makespan com 1 CPU dividido pelo makespan com 4 CPUs,",
             "no mesmo escalonador, quantum e memória. Eficiência é esse speedup dividido por 4.",
             "A espera conta só o tempo na fila de prontos. E/S e page fault ficam de fora.",
+            "Utilização de uma CPU é (tempo útil + tempo de troca) dividido pelo makespan.",
+            "A coluna Utilização é a média dessas frações, em porcentagem.",
+            "Ocioso é a soma do tempo em que a CPU não tinha processo.",
+            "A tabela de utilização abre as mesmas parcelas em cada núcleo, com as trocas cobradas nele.",
             "",
         ]
     )
@@ -51,10 +56,12 @@ def _introducao() -> str:
 def _tabela(cenario: str, linhas: list[dict[str, object]]) -> str:
     cabecalho = (
         "| Escalonador | Q | CPUs | Memória | Espera média | Espera máx | "
-        "Turnaround | Resposta | Makespan | Trocas | Faults | Taxa | Speedup | Eficiência |"
+        "Turnaround | Resposta | Makespan | Trocas | Faults | Taxa | Speedup | Eficiência | "
+        "Utilização | Ocioso |"
     )
     separador = (
-        "| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |"
+        "| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | "
+        "--- | --- |"
     )
     corpo = [cabecalho, separador]
     grupo = [linha for linha in linhas if linha["cenario"] == cenario]
@@ -71,7 +78,7 @@ def _tabela(cenario: str, linhas: list[dict[str, object]]) -> str:
         corpo.append(
             "| {sched} | {quantum} | {cpus} | {subst} | {espera} | {espera_max} | "
             "{turnaround} | {resposta} | {makespan} | {trocas} | {faults} | {taxa} | "
-            "{speedup} | {eficiencia} |".format(
+            "{speedup} | {eficiencia} | {utilizacao} | {ocioso} |".format(
                 sched=str(linha["sched"]).upper(),
                 quantum="—" if quantum == "" else quantum,
                 cpus=linha["cpus"],
@@ -86,9 +93,58 @@ def _tabela(cenario: str, linhas: list[dict[str, object]]) -> str:
                 taxa=_br(_num(linha, "taxa_faults"), 4),
                 speedup=_br_opc(_opc(linha, "speedup"), 4),
                 eficiencia=_br_opc(_opc(linha, "eficiencia"), 4),
+                utilizacao=_br(_utilizacao_media_pct(linha)),
+                ocioso=_int(linha, "tempo_ocioso"),
             )
         )
     return "\n".join([f"## Cenário {cenario}", "", *corpo, ""])
+
+
+def _tabela_por_cpu(linhas: list[dict[str, object]]) -> str:
+    cabecalho = "| Cenário | Escalonador | Q | Memória | CPU | Útil | Troca | Ocioso | Trocas | Utilização |"
+    separador = "| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |"
+    corpo = [cabecalho, separador]
+    for linha in _ordenar(linhas):
+        quantum = linha["quantum"]
+        for indice in range(int(str(linha["cpus"]))):
+            corpo.append(
+                "| {cenario} | {sched} | {quantum} | {subst} | {cpu} | {util} | {troca} | "
+                "{ocioso} | {trocas} | {utilizacao} |".format(
+                    cenario=linha["cenario"],
+                    sched=str(linha["sched"]).upper(),
+                    quantum="—" if quantum == "" else quantum,
+                    subst=str(linha["subst"]).upper(),
+                    cpu=indice,
+                    util=_int(linha, f"cpu{indice}_util"),
+                    troca=_int(linha, f"cpu{indice}_troca"),
+                    ocioso=_int(linha, f"cpu{indice}_ocioso"),
+                    trocas=_int(linha, f"cpu{indice}_trocas"),
+                    utilizacao=_br(_utilizacao_da_cpu_pct(linha, indice)),
+                )
+            )
+    return "\n".join(
+        [
+            "## Utilização, ociosidade e trocas por CPU",
+            "",
+            "Cada linha é um núcleo de uma execução. Utilização está em porcentagem.",
+            "",
+            *corpo,
+            "",
+        ]
+    )
+
+
+def _ordenar(linhas: list[dict[str, object]]) -> list[dict[str, object]]:
+    return sorted(
+        linhas,
+        key=lambda linha: (
+            str(linha["cenario"]),
+            0 if linha["subst"] == "lru" else 1,
+            str(linha["sched"]),
+            _quantum_ordem(linha),
+            int(str(linha["cpus"])),
+        ),
+    )
 
 
 def _espera(linhas: list[dict[str, object]]) -> str:
@@ -208,20 +264,56 @@ def _speedup(linhas: list[dict[str, object]]) -> str:
                 f"Speedup {_br(speedup, 4)}, eficiência {_br(eficiencia, 4)}."
             )
         frases.append("")
-    frases.append(
-        "No cenário A a eficiência fica entre 0,93 e 0,99: perto de 4, sem chegar lá. "
-        "Cada processo usa um núcleo por vez, a troca ocupa a CPU sem avançar referência, "
-        "e os 256 quadros são os mesmos da máquina de 1 CPU. "
-        "No cenário B o speedup do FCFS e do RR passa de 4. "
-        "Com 1 CPU esses escalonadores geram cerca de 16,9 mil faults; "
-        "com 4 CPUs, e chegadas espalhadas até t = 9534, o makespan fica perto de 12.000 "
-        "e os faults caem para a faixa de 6549 a 10573. "
-        "Menos page faults significam menos trabalho extra, e o speedup ultrapassa o número de núcleos. "
-        "O SJF no cenário B já tinha 6877 faults com 1 CPU, então o speedup fica em 3,8726, "
-        "abaixo de 4. Eficiência acima de 1, aqui, é efeito da memória, não de um núcleo a mais."
-    )
+    frases.append(_leitura_do_speedup(linhas))
     frases.append("")
     return "\n".join(frases)
+
+
+def _leitura_do_speedup(linhas: list[dict[str, object]]) -> str:
+    eficiencias_a = [
+        _num(linha, "eficiencia")
+        for linha in linhas
+        if linha["cenario"] == "A" and linha["cpus"] == 4 and linha["subst"] == "lru"
+    ]
+    faults_b4 = [
+        _int(linha, "page_faults")
+        for linha in linhas
+        if linha["cenario"] == "B"
+        and linha["cpus"] == 4
+        and linha["subst"] == "lru"
+        and linha["sched"] in {"fcfs", "rr"}
+    ]
+    sjf_b1 = _buscar(linhas, "B", "sjf", None, 1)
+    sjf_b4 = _buscar(linhas, "B", "sjf", None, 4)
+    fcfs_a1 = _buscar(linhas, "A", "fcfs", None, 1)
+    fcfs_a4 = _buscar(linhas, "A", "fcfs", None, 4)
+    fcfs_b4 = _buscar(linhas, "B", "fcfs", None, 4)
+    return (
+        f"No cenário A a eficiência fica entre {_br(min(eficiencias_a), 2)} e "
+        f"{_br(max(eficiencias_a), 2)}: perto de 4, sem chegar lá. "
+        "Cada processo usa um núcleo por vez, a troca ocupa a CPU sem avançar referência, "
+        "e os 256 quadros são os mesmos da máquina de 1 CPU. "
+        f"No FCFS com LRU, a CPU única ficou com utilização {_br(_utilizacao_media_pct(fcfs_a1))}% "
+        f"(útil {_int(fcfs_a1, 'tempo_util')}, troca {_int(fcfs_a1, 'tempo_troca')}, "
+        f"ocioso {_int(fcfs_a1, 'tempo_ocioso')}). "
+        f"Com 4 CPUs a utilização média foi {_br(_utilizacao_media_pct(fcfs_a4))}% "
+        f"e o ocioso somado foi {_int(fcfs_a4, 'tempo_ocioso')}. "
+        f"A folga entre o núcleo mais ocupado e o menos ocupado foi "
+        f"{_br(_folga_de_utilizacao(fcfs_a4))} pontos percentuais. "
+        "No cenário B o speedup do FCFS e do RR passa de 4. "
+        "Com 1 CPU esses escalonadores geram cerca de 16,9 mil faults; "
+        "com 4 CPUs, e chegadas espalhadas até t = 9534, "
+        f"os faults caem para a faixa de {min(faults_b4)} a {max(faults_b4)}. "
+        f"No FCFS com 4 CPUs a utilização média continua em "
+        f"{_br(_utilizacao_media_pct(fcfs_b4))}% "
+        f"(ocioso somado {_int(fcfs_b4, 'tempo_ocioso')}, "
+        f"trocas por CPU {_trocas_por_cpu(fcfs_b4)}). "
+        "Os núcleos não ficam parados. O speedup acima de 4 vem do trabalho extra "
+        "que a máquina de 1 CPU paga em faults e trocas, e que a de 4 CPUs evita. "
+        f"O SJF no cenário B já tinha {_int(sjf_b1, 'page_faults')} faults com 1 CPU, "
+        f"então o speedup fica em {_br(_num(sjf_b4, 'speedup'), 4)}, abaixo de 4. "
+        "Eficiência acima de 1, aqui, é efeito da memória, não de um núcleo a mais."
+    )
 
 
 def _memoria(linhas: list[dict[str, object]]) -> str:
@@ -295,25 +387,35 @@ def _fenomenos(linhas: list[dict[str, object]]) -> str:
         "porque não esvazia a fila pelos curtos.",
         "",
     ]
+    a4 = _buscar(linhas, "A", "fcfs", None, 4)
+    b1 = _buscar(linhas, "B", "fcfs", None, 1)
+    b4 = _buscar(linhas, "B", "fcfs", None, 4)
     taxa = _num(fcfs, "taxa_faults")
-    if taxa >= 0.2:
-        acertos = _int(fcfs, "page_faults") * (1.0 - taxa) / taxa
-        frases.append(
-            f"Thrashing, no sentido de disputa forte por quadro: a taxa de faults "
-            f"do FCFS com 1 CPU no cenário A foi {_br(taxa, 4)}, "
-            f"com {_int(fcfs, 'page_faults')} faults para {acertos:.0f} acertos "
-            "(uma referência bem-sucedida por unidade de CPU). "
-            "Cada fault tira o processo da CPU por 20 unidades e a página fica protegida "
-            "até o acerto. Com a memória cheia, a próxima referência de outro processo "
-            "expulsa uma página que logo será pedida de novo. "
-            "O cenário B com 4 CPUs, citado na seção FIFO e LRU, reduz essa pressão: "
-            "a taxa do FCFS cai de 0,3179 no cenário A para 0,1684 no B. "
-            "Com 1 CPU os dois cenários ficam na mesma taxa, perto de 0,32, "
-            "porque a fila longa segura todo mundo no sistema. "
-            "O simulador não tem fila de disco: os faults andam em paralelo, "
-            "então o tempo perdido é menor do que seria num disco único."
-        )
-        frases.append("")
+    acertos = _int(fcfs, "page_faults") * (1.0 - taxa) / taxa
+    frases.append(
+        "A taxa de faults alta não deixa a CPU ociosa. "
+        f"No FCFS com LRU e 1 CPU no cenário A, a taxa foi {_br(taxa, 4)}, "
+        f"com {_int(fcfs, 'page_faults')} faults para {acertos:.0f} acertos. "
+        f"O mesmo núcleo teve utilização {_br(_utilizacao_media_pct(fcfs))}%: "
+        f"útil {_int(fcfs, 'tempo_util')}, troca {_int(fcfs, 'tempo_troca')} "
+        f"e ocioso {_int(fcfs, 'tempo_ocioso')}, no makespan {_int(fcfs, 'makespan')}. "
+        "Cada fault tira o processo da CPU por 20 unidades e a página fica protegida "
+        "até o acerto. Outro processo pronto ocupa o núcleo na hora. "
+        "Com a memória cheia, a próxima referência expulsa uma página que logo será pedida de novo. "
+        "Isso é pressão de memória. Não é thrashing no sentido de o processador parar "
+        "à espera do disco, porque a utilização fica colada em 100%. "
+        f"No cenário A com 4 CPUs a taxa do FCFS continua {_br(_num(a4, 'taxa_faults'), 4)} "
+        f"e a utilização média é {_br(_utilizacao_media_pct(a4))}%. "
+        f"No cenário B com 1 CPU a taxa é {_br(_num(b1, 'taxa_faults'), 4)} "
+        f"e a utilização é {_br(_utilizacao_media_pct(b1))}%. "
+        f"Com 4 CPUs a taxa cai para {_br(_num(b4, 'taxa_faults'), 4)} "
+        f"e a utilização média fica em {_br(_utilizacao_media_pct(b4))}%, "
+        f"com ocioso somado {_int(b4, 'tempo_ocioso')}. "
+        "A fila longa, com 1 CPU, segura os dois cenários na mesma taxa, perto de 0,32. "
+        "O simulador não tem fila de disco: os faults andam em paralelo, "
+        "então o tempo perdido é menor do que seria num disco único, e a CPU não espera."
+    )
+    frases.append("")
     return "\n".join(frases)
 
 
@@ -402,6 +504,26 @@ def _opc(linha: dict[str, object], campo: str) -> float | None:
     if isinstance(valor, bool) or not isinstance(valor, (int, float)):
         raise TypeError(f"{campo} não é numérico: {valor!r}")
     return float(valor)
+
+
+def _utilizacao_media_pct(linha: dict[str, object]) -> float:
+    return _num(linha, "utilizacao_media") * 100.0
+
+
+def _utilizacao_da_cpu_pct(linha: dict[str, object], indice: int) -> float:
+    return _num(linha, f"cpu{indice}_utilizacao") * 100.0
+
+
+def _folga_de_utilizacao(linha: dict[str, object]) -> float:
+    valores = [_utilizacao_da_cpu_pct(linha, indice) for indice in range(int(str(linha["cpus"])))]
+    return max(valores) - min(valores)
+
+
+def _trocas_por_cpu(linha: dict[str, object]) -> str:
+    valores = [str(_int(linha, f"cpu{indice}_trocas")) for indice in range(int(str(linha["cpus"])))]
+    if len(valores) == 1:
+        return valores[0]
+    return ", ".join(valores[:-1]) + " e " + valores[-1]
 
 
 def _br(valor: float, casas: int = 2) -> str:

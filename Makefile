@@ -14,3 +14,4 @@ qualidade:
 experimentos:
 	$(PYTHON) experimentos/rodar.py
 	$(PYTHON) experimentos/graficos.py
+	$(PYTHON) experimentos/relatorio_docx.py

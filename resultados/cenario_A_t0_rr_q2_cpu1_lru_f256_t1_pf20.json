@@ -1,0 +1,39 @@
+{
+  "arquivo": "/home/user/SIMULADOR_ESCALONADOR_MULTIPROCESSADO/dados/cenario_A_t0.json",
+  "cpus": 1,
+  "sched": "rr",
+  "quantum": 2,
+  "subst": "lru",
+  "quadros": 256,
+  "custo_troca": 1,
+  "tempo_fault": 20,
+  "ignorar_memoria": false,
+  "espera_media": 39053.239,
+  "espera_max": 81559,
+  "espera_max_pid": 711,
+  "turnaround_medio": 39882.258,
+  "resposta_media": 499.5,
+  "makespan": 85703,
+  "trocas_contexto": 49464,
+  "page_faults": 16929,
+  "acertos": 36239,
+  "taxa_faults": 0.31840580800481494,
+  "speedup": null,
+  "eficiencia": null,
+  "espera_curto": 37401.834202294056,
+  "espera_longo": 77680.0,
+  "turnaround_curto": 38126.78519290928,
+  "turnaround_longo": 80943.19512195123,
+  "resposta_curto": 497.64650677789365,
+  "resposta_longo": 542.8536585365854,
+  "por_cpu": [
+    {
+      "indice": 0,
+      "tempo_util": 36239,
+      "tempo_troca": 49464,
+      "tempo_ocioso": 0,
+      "trocas": 49464,
+      "utilizacao": 1.0
+    }
+  ]
+}

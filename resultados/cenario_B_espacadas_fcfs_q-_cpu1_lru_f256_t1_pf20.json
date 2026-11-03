@@ -1,0 +1,39 @@
+{
+  "arquivo": "/home/user/SIMULADOR_ESCALONADOR_MULTIPROCESSADO/dados/cenario_B_espacadas.json",
+  "cpus": 1,
+  "sched": "fcfs",
+  "quantum": null,
+  "subst": "lru",
+  "quadros": 256,
+  "custo_troca": 1,
+  "tempo_fault": 20,
+  "ignorar_memoria": false,
+  "espera_media": 30458.543,
+  "espera_max": 66686,
+  "espera_max_pid": 64,
+  "turnaround_medio": 31207.125,
+  "resposta_media": 694.329,
+  "makespan": 71355,
+  "trocas_contexto": 35107,
+  "page_faults": 16912,
+  "acertos": 36239,
+  "taxa_faults": 0.31818780455682866,
+  "speedup": null,
+  "eficiencia": null,
+  "espera_curto": 29206.727841501564,
+  "espera_longo": 59738.80487804878,
+  "turnaround_curto": 29858.93534932221,
+  "turnaround_longo": 62741.60975609756,
+  "resposta_curto": 692.4254431699687,
+  "resposta_longo": 738.8536585365854,
+  "por_cpu": [
+    {
+      "indice": 0,
+      "tempo_util": 36239,
+      "tempo_troca": 35107,
+      "tempo_ocioso": 9,
+      "trocas": 35107,
+      "utilizacao": 0.9998738700861888
+    }
+  ]
+}

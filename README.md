@@ -59,7 +59,7 @@ make experimentos
 
 São 28 execuções base (cenários A e B, 1 e 4 CPUs, FCFS, SJF e RR com quantum 2, 5, 10, 20 e 50, LRU, 256 quadros) e mais 4 execuções FIFO para comparar com a LRU correspondente. O enunciado nomeia os quantums 2, 10 e 50 e fecha a conta em sete variações; 5 e 20 completam essa conta.
 
-O comando grava `resultados/metricas.csv`, os Gantt, os gráficos em `resultados/graficos/` e o texto em `experimentos/analise.md`.
+O comando grava `resultados/metricas.csv` (métricas obrigatórias, inclusive utilização, ociosidade e trocas por CPU), os Gantt, os gráficos em `resultados/graficos/`, o texto em `experimentos/analise.md` e o relatório em `relatorio/relatorio.docx`.
 
 ## Qualidade do código
 
