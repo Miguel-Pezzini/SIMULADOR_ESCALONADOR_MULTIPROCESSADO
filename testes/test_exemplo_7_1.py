@@ -1,16 +1,16 @@
 from pathlib import Path
 
 import pytest
-from testes.suporte import fecha_makespan, por_pid, rodar
+from testes.suporte import conferir_se_os_tempos_das_cpus_fecham_o_makespan, espera_por_pid, rodar
 
 from simulador.cli import main
-from simulador.saida import gravar, recortar_gantt
+from simulador.saida import gravar_gantt_e_metricas, recortar_gantt
 
 
 def test_fcfs_sem_memoria(fixtures: Path) -> None:
     resultado = rodar(fixtures / "exemplo_7_1.json", ignorar_memoria=True, custo_troca=1)
     assert resultado.makespan == 13
-    assert por_pid(resultado) == {1: 0, 2: 6, 3: 8}
+    assert espera_por_pid(resultado) == {1: 0, 2: 6, 3: 8}
     assert {p.pid: p.turnaround for p in resultado.processos} == {1: 6, 2: 10, 3: 11}
     assert {p.pid: p.resposta for p in resultado.processos} == {1: 0, 2: 6, 3: 8}
     assert resultado.espera_media() == pytest.approx(14 / 3)
@@ -25,21 +25,21 @@ def test_fcfs_sem_memoria(fixtures: Path) -> None:
         (10, 11, "TROCA"),
         (11, 13, "P3"),
     ]
-    fecha_makespan(resultado)
+    conferir_se_os_tempos_das_cpus_fecham_o_makespan(resultado)
 
 
 def test_sjf_sem_memoria(fixtures: Path) -> None:
     resultado = rodar(
         fixtures / "exemplo_7_1.json",
-        sched="sjf",
+        algoritmo_de_escalonamento="sjf",
         ignorar_memoria=True,
         custo_troca=1,
     )
     assert resultado.makespan == 13
-    assert por_pid(resultado) == {1: 7, 2: 0, 3: 2}
+    assert espera_por_pid(resultado) == {1: 7, 2: 0, 3: 2}
     assert {p.pid: p.turnaround for p in resultado.processos} == {1: 13, 2: 4, 3: 5}
     assert resultado.cpus[0].trocas == 3
-    fecha_makespan(resultado)
+    conferir_se_os_tempos_das_cpus_fecham_o_makespan(resultado)
 
 
 def test_cli_grava_gantt_e_resumo(
@@ -85,6 +85,6 @@ def test_recorta_gantt_na_janela() -> None:
 
 def test_gravar_json_de_metricas(fixtures: Path, tmp_path: Path) -> None:
     resultado = rodar(fixtures / "exemplo_7_1.json", ignorar_memoria=True)
-    _, metricas = gravar(resultado, tmp_path)
+    _, metricas = gravar_gantt_e_metricas(resultado, tmp_path)
     assert metricas.exists()
     assert "makespan" in metricas.read_text(encoding="utf-8")

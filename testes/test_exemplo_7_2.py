@@ -1,6 +1,6 @@
 from pathlib import Path
 
-from testes.suporte import fecha_makespan, por_pid, rodar
+from testes.suporte import conferir_se_os_tempos_das_cpus_fecham_o_makespan, espera_por_pid, rodar
 
 from simulador.saida import recortar_gantt
 
@@ -14,7 +14,7 @@ def test_faults_nao_entram_na_espera(fixtures: Path) -> None:
         log=True,
     )
     assert resultado.makespan == 13
-    assert por_pid(resultado) == {1: 0, 2: 0, 3: 0}
+    assert espera_por_pid(resultado) == {1: 0, 2: 0, 3: 0}
     assert {p.pid: p.turnaround for p in resultado.processos} == {1: 12, 2: 12, 3: 6}
     assert resultado.page_faults == 5
     assert resultado.acertos == 5
@@ -31,4 +31,4 @@ def test_faults_nao_entram_na_espera(fixtures: Path) -> None:
     ]
     assert any("evento=PAGE_FAULT" in linha for linha in resultado.log)
     assert any("evento=CHEGADA pid=1" in linha for linha in resultado.log)
-    fecha_makespan(resultado)
+    conferir_se_os_tempos_das_cpus_fecham_o_makespan(resultado)

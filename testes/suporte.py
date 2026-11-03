@@ -10,12 +10,17 @@ from simulador.modelos import Parametros
 from simulador.nucleo import simular
 
 
-def burst_cpu(duracao: int, refs: list[int] | None = None) -> dict[str, object]:
-    return {"cpu": duracao, "refs": [0] * duracao if refs is None else refs}
+def burst_de_cpu(
+    duracao_de_cpu: int,
+    paginas_referenciadas: list[int] | None = None,
+) -> dict[str, object]:
+    if paginas_referenciadas is None:
+        paginas_referenciadas = [0] * duracao_de_cpu
+    return {"cpu": duracao_de_cpu, "refs": paginas_referenciadas}
 
 
-def es(duracao: int) -> dict[str, object]:
-    return {"es": duracao}
+def burst_de_entrada_saida(duracao_de_entrada_saida: int) -> dict[str, object]:
+    return {"es": duracao_de_entrada_saida}
 
 
 def processo(
@@ -43,40 +48,40 @@ def rodar(
     arquivo: Path,
     *,
     cpus: int = 1,
-    sched: str = "fcfs",
+    algoritmo_de_escalonamento: str = "fcfs",
     quantum: int | None = None,
-    subst: str = "fifo",
+    algoritmo_de_substituicao_de_pagina: str = "fifo",
     quadros: int = 32,
     custo_troca: int = 1,
     tempo_fault: int = 20,
     ignorar_memoria: bool = False,
     log: bool = False,
-    referencia_1cpu: str | None = None,
+    arquivo_de_metricas_com_1_cpu: str | None = None,
     saida: str | None = None,
 ) -> Resultado:
     return simular(
         Parametros(
             arquivo=str(arquivo),
             cpus=cpus,
-            sched=sched,
+            algoritmo_de_escalonamento=algoritmo_de_escalonamento,
             quantum=quantum,
-            subst=subst,
+            algoritmo_de_substituicao_de_pagina=algoritmo_de_substituicao_de_pagina,
             quadros=quadros,
             custo_troca=custo_troca,
             tempo_fault=tempo_fault,
             ignorar_memoria=ignorar_memoria,
             log=log,
-            referencia_1cpu=referencia_1cpu,
+            arquivo_de_metricas_com_1_cpu=arquivo_de_metricas_com_1_cpu,
             saida=saida,
         )
     )
 
 
-def por_pid(resultado: Resultado) -> dict[int, int]:
-    return {proc.pid: proc.espera for proc in resultado.processos}
+def espera_por_pid(resultado: Resultado) -> dict[int, int]:
+    return {processo.pid: processo.espera for processo in resultado.processos}
 
 
-def fecha_makespan(resultado: Resultado) -> None:
+def conferir_se_os_tempos_das_cpus_fecham_o_makespan(resultado: Resultado) -> None:
     for cpu in resultado.cpus:
         soma = cpu.tempo_util + cpu.tempo_troca + cpu.tempo_ocioso
         assert soma == resultado.makespan

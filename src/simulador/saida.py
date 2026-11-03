@@ -10,48 +10,58 @@ from simulador.metricas import Resultado
 JANELA_GANTT = 200
 
 
-def nome_execucao(resultado: Resultado) -> str:
-    params = resultado.parametros
-    arquivo = Path(params.arquivo).stem
-    quantum = f"q{params.quantum}" if params.quantum is not None else "q-"
-    memoria = "semmem" if params.ignorar_memoria else f"{params.subst}_f{params.quadros}"
+def nome_dos_arquivos_desta_execucao(resultado: Resultado) -> str:
+    parametros = resultado.parametros
+    arquivo = Path(parametros.arquivo).stem
+    quantum = f"q{parametros.quantum}" if parametros.quantum is not None else "q-"
+    if parametros.ignorar_memoria:
+        trecho_de_memoria_no_nome = "semmem"
+    else:
+        trecho_de_memoria_no_nome = (
+            f"{parametros.algoritmo_de_substituicao_de_pagina}_f{parametros.quadros}"
+        )
     return (
-        f"{arquivo}_{params.sched}_{quantum}_cpu{params.cpus}_"
-        f"{memoria}_t{params.custo_troca}_pf{params.tempo_fault}"
+        f"{arquivo}_{parametros.algoritmo_de_escalonamento}_{quantum}_cpu{parametros.cpus}_"
+        f"{trecho_de_memoria_no_nome}_t{parametros.custo_troca}_pf{parametros.tempo_fault}"
     )
 
 
 def recortar_gantt(
     intervalos: list[tuple[int, int, str]],
-    limite: int = JANELA_GANTT,
+    instante_final_da_janela: int = JANELA_GANTT,
 ) -> list[tuple[int, int, str]]:
-    recorte: list[tuple[int, int, str]] = []
+    intervalos_recortados: list[tuple[int, int, str]] = []
     for inicio, fim, evento in intervalos:
-        a = max(inicio, 0)
-        b = min(fim, limite)
-        if a >= b:
+        inicio_visivel_na_janela = max(inicio, 0)
+        fim_visivel_na_janela = min(fim, instante_final_da_janela)
+        if inicio_visivel_na_janela >= fim_visivel_na_janela:
             continue
-        if recorte and recorte[-1][2] == evento and recorte[-1][1] == a:
-            ini, _, ev = recorte[-1]
-            recorte[-1] = (ini, b, ev)
+        cabe_no_intervalo_anterior = (
+            intervalos_recortados
+            and intervalos_recortados[-1][2] == evento
+            and intervalos_recortados[-1][1] == inicio_visivel_na_janela
+        )
+        if cabe_no_intervalo_anterior:
+            inicio_anterior, _, rotulo = intervalos_recortados[-1]
+            intervalos_recortados[-1] = (inicio_anterior, fim_visivel_na_janela, rotulo)
         else:
-            recorte.append((a, b, evento))
-    return recorte
+            intervalos_recortados.append((inicio_visivel_na_janela, fim_visivel_na_janela, evento))
+    return intervalos_recortados
 
 
 def formatar_resumo(resultado: Resultado) -> str:
-    params = resultado.parametros
+    parametros = resultado.parametros
     linhas = [
         "=== Parâmetros ===",
-        f"arquivo: {params.arquivo}",
-        f"cpus: {params.cpus}",
-        f"escalonador: {params.sched}",
-        f"quantum: {params.quantum if params.quantum is not None else '-'}",
-        f"substituicao: {params.subst}",
-        f"quadros: {params.quadros}",
-        f"custo_troca: {params.custo_troca}",
-        f"tempo_fault: {params.tempo_fault}",
-        f"ignorar_memoria: {'sim' if params.ignorar_memoria else 'nao'}",
+        f"arquivo: {parametros.arquivo}",
+        f"cpus: {parametros.cpus}",
+        f"escalonador: {parametros.algoritmo_de_escalonamento}",
+        f"quantum: {parametros.quantum if parametros.quantum is not None else '-'}",
+        f"substituicao: {parametros.algoritmo_de_substituicao_de_pagina}",
+        f"quadros: {parametros.quadros}",
+        f"custo_troca: {parametros.custo_troca}",
+        f"tempo_fault: {parametros.tempo_fault}",
+        f"ignorar_memoria: {'sim' if parametros.ignorar_memoria else 'nao'}",
         "",
         "=== Métricas globais ===",
         f"espera_media: {resultado.espera_media():.2f}",
@@ -59,22 +69,22 @@ def formatar_resumo(resultado: Resultado) -> str:
         f"turnaround_medio: {resultado.turnaround_medio():.2f}",
         f"resposta_media: {resultado.resposta_media():.2f}",
         f"makespan: {resultado.makespan}",
-        f"trocas_contexto: {resultado.trocas_total()}",
+        f"trocas_contexto: {resultado.total_de_trocas_de_contexto()}",
         f"page_faults: {resultado.page_faults}",
-        f"taxa_faults: {resultado.taxa_faults():.4f}",
-        f"speedup: {_fmt_opcional(resultado.speedup)}",
-        f"eficiencia: {_fmt_opcional(resultado.eficiencia)}",
+        f"taxa_faults: {resultado.taxa_de_faltas_de_pagina():.4f}",
+        f"speedup: {_formatar_opcional(resultado.speedup)}",
+        f"eficiencia: {_formatar_opcional(resultado.eficiencia)}",
         "",
         "=== Por classe ===",
         "classe espera_media turnaround_medio resposta_media",
     ]
     for classe in ("curto", "longo"):
-        espera = resultado.media_classe(classe, "espera")
-        turno = resultado.media_classe(classe, "turnaround")
-        resposta = resultado.media_classe(classe, "resposta")
-        if espera is None or turno is None or resposta is None:
+        espera = resultado.media_do_campo_na_classe(classe, "espera")
+        turnaround_da_classe = resultado.media_do_campo_na_classe(classe, "turnaround")
+        resposta = resultado.media_do_campo_na_classe(classe, "resposta")
+        if espera is None or turnaround_da_classe is None or resposta is None:
             continue
-        linhas.append(f"{classe} {espera:.2f} {turno:.2f} {resposta:.2f}")
+        linhas.append(f"{classe} {espera:.2f} {turnaround_da_classe:.2f} {resposta:.2f}")
     linhas.extend(
         [
             "",
@@ -99,53 +109,56 @@ def formatar_resumo(resultado: Resultado) -> str:
     return "\n".join(linhas) + "\n"
 
 
-def imprimir(resultado: Resultado) -> None:
+def imprimir_resumo(resultado: Resultado) -> None:
     print(formatar_resumo(resultado), end="")
 
 
-def gravar(resultado: Resultado, diretorio: Path) -> tuple[Path, Path]:
+def gravar_gantt_e_metricas(resultado: Resultado, diretorio: Path) -> tuple[Path, Path]:
     diretorio.mkdir(parents=True, exist_ok=True)
-    base = diretorio / nome_execucao(resultado)
+    base = diretorio / nome_dos_arquivos_desta_execucao(resultado)
     gantt = base.with_name(base.name + "_gantt.csv")
     metricas = base.with_suffix(".json")
     gantt.write_text(_gantt_csv(resultado), encoding="utf-8")
-    metricas.write_text(json.dumps(para_json(resultado), indent=2), encoding="utf-8")
+    metricas.write_text(
+        json.dumps(resultado_para_dicionario(resultado), indent=2),
+        encoding="utf-8",
+    )
     if resultado.parametros.log:
         log = base.with_name(base.name + "_log.txt")
         log.write_text("\n".join(resultado.log) + ("\n" if resultado.log else ""), encoding="utf-8")
     return gantt, metricas
 
 
-def para_json(resultado: Resultado) -> dict[str, object]:
-    params = resultado.parametros
+def resultado_para_dicionario(resultado: Resultado) -> dict[str, object]:
+    parametros = resultado.parametros
     return {
-        "arquivo": params.arquivo,
-        "cpus": params.cpus,
-        "sched": params.sched,
-        "quantum": params.quantum,
-        "subst": params.subst,
-        "quadros": params.quadros,
-        "custo_troca": params.custo_troca,
-        "tempo_fault": params.tempo_fault,
-        "ignorar_memoria": params.ignorar_memoria,
+        "arquivo": parametros.arquivo,
+        "cpus": parametros.cpus,
+        "sched": parametros.algoritmo_de_escalonamento,
+        "quantum": parametros.quantum,
+        "subst": parametros.algoritmo_de_substituicao_de_pagina,
+        "quadros": parametros.quadros,
+        "custo_troca": parametros.custo_troca,
+        "tempo_fault": parametros.tempo_fault,
+        "ignorar_memoria": parametros.ignorar_memoria,
         "espera_media": resultado.espera_media(),
         "espera_max": resultado.espera_max(),
         "espera_max_pid": resultado.espera_max_pid(),
         "turnaround_medio": resultado.turnaround_medio(),
         "resposta_media": resultado.resposta_media(),
         "makespan": resultado.makespan,
-        "trocas_contexto": resultado.trocas_total(),
+        "trocas_contexto": resultado.total_de_trocas_de_contexto(),
         "page_faults": resultado.page_faults,
         "acertos": resultado.acertos,
-        "taxa_faults": resultado.taxa_faults(),
+        "taxa_faults": resultado.taxa_de_faltas_de_pagina(),
         "speedup": resultado.speedup,
         "eficiencia": resultado.eficiencia,
-        "espera_curto": resultado.media_classe("curto", "espera"),
-        "espera_longo": resultado.media_classe("longo", "espera"),
-        "turnaround_curto": resultado.media_classe("curto", "turnaround"),
-        "turnaround_longo": resultado.media_classe("longo", "turnaround"),
-        "resposta_curto": resultado.media_classe("curto", "resposta"),
-        "resposta_longo": resultado.media_classe("longo", "resposta"),
+        "espera_curto": resultado.media_do_campo_na_classe("curto", "espera"),
+        "espera_longo": resultado.media_do_campo_na_classe("longo", "espera"),
+        "turnaround_curto": resultado.media_do_campo_na_classe("curto", "turnaround"),
+        "turnaround_longo": resultado.media_do_campo_na_classe("longo", "turnaround"),
+        "resposta_curto": resultado.media_do_campo_na_classe("curto", "resposta"),
+        "resposta_longo": resultado.media_do_campo_na_classe("longo", "resposta"),
         "por_cpu": [
             {
                 "indice": cpu.indice,
@@ -171,24 +184,25 @@ def _gantt_csv(resultado: Resultado) -> str:
 def _linha_cpu(
     makespan: int,
     indice: int,
-    util: int,
-    troca: int,
-    ocioso: int,
+    tempo_util: int,
+    tempo_de_troca: int,
+    tempo_ocioso: int,
     trocas: int,
 ) -> str:
-    def pct(parte: int) -> float:
+    def percentual(parte: int) -> float:
         if makespan == 0:
             return 0.0
         return 100.0 * parte / makespan
 
-    utilizacao = 0.0 if makespan == 0 else 100.0 * (util + troca) / makespan
+    utilizacao = 0.0 if makespan == 0 else 100.0 * (tempo_util + tempo_de_troca) / makespan
     return (
-        f"{indice} {util} {troca} {ocioso} {trocas} "
-        f"{pct(util):.2f} {pct(troca):.2f} {pct(ocioso):.2f} {utilizacao:.2f}"
+        f"{indice} {tempo_util} {tempo_de_troca} {tempo_ocioso} {trocas} "
+        f"{percentual(tempo_util):.2f} {percentual(tempo_de_troca):.2f} "
+        f"{percentual(tempo_ocioso):.2f} {utilizacao:.2f}"
     )
 
 
-def _fmt_opcional(valor: float | None) -> str:
+def _formatar_opcional(valor: float | None) -> str:
     if valor is None:
         return "-"
     return f"{valor:.4f}"

@@ -43,11 +43,11 @@ def _ler_csv(caminho: Path) -> list[dict[str, str]]:
 
 def _base(linhas: list[dict[str, str]], cenario: str, cpus: str) -> list[dict[str, str]]:
     achados = []
-    for sched, quantum, _rotulo in ROTULOS:
+    for algoritmo_de_escalonamento, quantum, _rotulo in ROTULOS:
         for linha in linhas:
             if (
                 linha["cenario"] == cenario
-                and linha["sched"] == sched
+                and linha["sched"] == algoritmo_de_escalonamento
                 and linha["quantum"] == quantum
                 and linha["cpus"] == cpus
                 and linha["subst"] == "lru"
@@ -60,19 +60,19 @@ def _base(linhas: list[dict[str, str]], cenario: str, cpus: str) -> list[dict[st
 def _espera(linhas: list[dict[str, str]]) -> None:
     fig, eixos = plt.subplots(1, 2, figsize=(12, 4.5), sharey=False)
     for eixo, cenario in zip(eixos, ("A", "B"), strict=True):
-        uma = _base(linhas, cenario, "1")
-        quatro = _base(linhas, cenario, "4")
+        com_1_cpu = _base(linhas, cenario, "1")
+        com_4_cpus = _base(linhas, cenario, "4")
         posicoes = list(range(len(ROTULOS)))
         largura = 0.38
         eixo.bar(
             [p - largura / 2 for p in posicoes],
-            [float(linha["espera_media"]) for linha in uma],
+            [float(linha["espera_media"]) for linha in com_1_cpu],
             width=largura,
             label="1 CPU",
         )
         eixo.bar(
             [p + largura / 2 for p in posicoes],
-            [float(linha["espera_media"]) for linha in quatro],
+            [float(linha["espera_media"]) for linha in com_4_cpus],
             width=largura,
             label="4 CPUs",
         )
@@ -118,8 +118,8 @@ def _quantum(linhas: list[dict[str, str]]) -> None:
 def _speedup(linhas: list[dict[str, str]]) -> None:
     fig, eixos = plt.subplots(1, 2, figsize=(12, 4.5), sharey=True)
     for eixo, cenario in zip(eixos, ("A", "B"), strict=True):
-        quatro = _base(linhas, cenario, "4")
-        eixo.bar(range(len(quatro)), [float(linha["speedup"]) for linha in quatro])
+        com_4_cpus = _base(linhas, cenario, "4")
+        eixo.bar(range(len(com_4_cpus)), [float(linha["speedup"]) for linha in com_4_cpus])
         eixo.axhline(4, color="gray", linestyle="--", linewidth=1, label="ideal = 4")
         eixo.set_xticks(range(len(ROTULOS)), [rotulo for _s, _q, rotulo in ROTULOS])
         eixo.set_title(f"Cenário {cenario}")

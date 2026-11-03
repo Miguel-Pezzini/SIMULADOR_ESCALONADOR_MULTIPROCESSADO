@@ -15,7 +15,7 @@ from redigir import escrever_analise  # noqa: E402
 from simulador.metricas import Resultado  # noqa: E402
 from simulador.modelos import Parametros  # noqa: E402
 from simulador.nucleo import simular  # noqa: E402
-from simulador.saida import gravar  # noqa: E402
+from simulador.saida import gravar_gantt_e_metricas  # noqa: E402
 
 PASTA = RAIZ / "resultados"
 QUANTUMS = (2, 5, 10, 20, 50)
@@ -58,15 +58,35 @@ CAMPOS = (
 
 def main() -> None:
     PASTA.mkdir(parents=True, exist_ok=True)
-    referencias: dict[tuple[str, str, int | None, str], Path] = {}
+    arquivos_de_metricas_com_1_cpu: dict[tuple[str, str, int | None, str], Path] = {}
     linhas: list[dict[str, object]] = []
     for cenario, arquivo in CENARIOS:
-        for sched, quantum in VARIANTES:
+        for algoritmo_de_escalonamento, quantum in VARIANTES:
             for cpus in (1, 4):
-                linhas.append(_executar(cenario, arquivo, sched, quantum, cpus, "lru", referencias))
-    for cenario, sched, quantum, cpus in EXTRAS_FIFO:
+                linhas.append(
+                    _executar(
+                        cenario,
+                        arquivo,
+                        algoritmo_de_escalonamento,
+                        quantum,
+                        cpus,
+                        "lru",
+                        arquivos_de_metricas_com_1_cpu,
+                    )
+                )
+    for cenario, algoritmo_de_escalonamento, quantum, cpus in EXTRAS_FIFO:
         arquivo = dict(CENARIOS)[cenario]
-        linhas.append(_executar(cenario, arquivo, sched, quantum, cpus, "fifo", referencias))
+        linhas.append(
+            _executar(
+                cenario,
+                arquivo,
+                algoritmo_de_escalonamento,
+                quantum,
+                cpus,
+                "fifo",
+                arquivos_de_metricas_com_1_cpu,
+            )
+        )
     _gravar_csv(linhas)
     escrever_analise(linhas, RAIZ / "experimentos" / "analise.md")
     print(f"metricas: {PASTA / 'metricas.csv'}")
@@ -76,28 +96,34 @@ def main() -> None:
 def _executar(
     cenario: str,
     arquivo: Path,
-    sched: str,
+    algoritmo_de_escalonamento: str,
     quantum: int | None,
     cpus: int,
-    subst: str,
-    referencias: dict[tuple[str, str, int | None, str], Path],
+    algoritmo_de_substituicao_de_pagina: str,
+    arquivos_de_metricas_com_1_cpu: dict[tuple[str, str, int | None, str], Path],
 ) -> dict[str, object]:
-    referencia = None
+    arquivo_de_metricas_com_1_cpu = None
     if cpus == 4:
-        anterior = referencias.get((cenario, sched, quantum, subst))
-        if anterior is not None:
-            referencia = str(anterior)
+        chave = (
+            cenario,
+            algoritmo_de_escalonamento,
+            quantum,
+            algoritmo_de_substituicao_de_pagina,
+        )
+        rodada_com_1_cpu = arquivos_de_metricas_com_1_cpu.get(chave)
+        if rodada_com_1_cpu is not None:
+            arquivo_de_metricas_com_1_cpu = str(rodada_com_1_cpu)
     resultado = simular(
         Parametros(
             arquivo=str(arquivo),
             cpus=cpus,
-            sched=sched,
+            algoritmo_de_escalonamento=algoritmo_de_escalonamento,
             quantum=quantum,
-            subst=subst,
+            algoritmo_de_substituicao_de_pagina=algoritmo_de_substituicao_de_pagina,
             quadros=256,
             custo_troca=1,
             tempo_fault=20,
-            referencia_1cpu=referencia,
+            arquivo_de_metricas_com_1_cpu=arquivo_de_metricas_com_1_cpu,
             saida=str(PASTA),
         )
     )
@@ -107,13 +133,16 @@ def _executar(
             raise RuntimeError(
                 f"CPU {cpu.indice} não fecha o makespan ({soma} != {resultado.makespan})"
             )
-    _, metricas = gravar(resultado, PASTA)
+    _, metricas = gravar_gantt_e_metricas(resultado, PASTA)
     if cpus == 1:
-        referencias[(cenario, sched, quantum, subst)] = metricas
+        arquivos_de_metricas_com_1_cpu[
+            (cenario, algoritmo_de_escalonamento, quantum, algoritmo_de_substituicao_de_pagina)
+        ] = metricas
     linha = _linha(cenario, resultado)
     quantum_txt = "-" if quantum is None else str(quantum)
     print(
-        f"{cenario} {sched} q={quantum_txt} cpu={cpus} {subst} "
+        f"{cenario} {algoritmo_de_escalonamento} q={quantum_txt} cpu={cpus} "
+        f"{algoritmo_de_substituicao_de_pagina} "
         f"makespan={resultado.makespan} espera={resultado.espera_media():.2f} "
         f"faults={resultado.page_faults}",
         flush=True,
@@ -125,27 +154,27 @@ def _linha(cenario: str, resultado: Resultado) -> dict[str, object]:
     params = resultado.parametros
     return {
         "cenario": cenario,
-        "sched": params.sched,
+        "sched": params.algoritmo_de_escalonamento,
         "quantum": "" if params.quantum is None else params.quantum,
         "cpus": params.cpus,
-        "subst": params.subst,
+        "subst": params.algoritmo_de_substituicao_de_pagina,
         "espera_media": resultado.espera_media(),
         "espera_max": resultado.espera_max(),
         "espera_max_pid": resultado.espera_max_pid(),
         "turnaround_medio": resultado.turnaround_medio(),
         "resposta_media": resultado.resposta_media(),
         "makespan": resultado.makespan,
-        "trocas_contexto": resultado.trocas_total(),
+        "trocas_contexto": resultado.total_de_trocas_de_contexto(),
         "page_faults": resultado.page_faults,
-        "taxa_faults": resultado.taxa_faults(),
+        "taxa_faults": resultado.taxa_de_faltas_de_pagina(),
         "speedup": resultado.speedup,
         "eficiencia": resultado.eficiencia,
-        "espera_curto": resultado.media_classe("curto", "espera"),
-        "espera_longo": resultado.media_classe("longo", "espera"),
-        "turnaround_curto": resultado.media_classe("curto", "turnaround"),
-        "turnaround_longo": resultado.media_classe("longo", "turnaround"),
-        "resposta_curto": resultado.media_classe("curto", "resposta"),
-        "resposta_longo": resultado.media_classe("longo", "resposta"),
+        "espera_curto": resultado.media_do_campo_na_classe("curto", "espera"),
+        "espera_longo": resultado.media_do_campo_na_classe("longo", "espera"),
+        "turnaround_curto": resultado.media_do_campo_na_classe("curto", "turnaround"),
+        "turnaround_longo": resultado.media_do_campo_na_classe("longo", "turnaround"),
+        "resposta_curto": resultado.media_do_campo_na_classe("curto", "resposta"),
+        "resposta_longo": resultado.media_do_campo_na_classe("longo", "resposta"),
     }
 
 

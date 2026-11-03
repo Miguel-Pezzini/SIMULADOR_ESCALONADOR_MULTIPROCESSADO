@@ -8,7 +8,6 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Literal
 
 
 class Estado(Enum):
@@ -22,22 +21,18 @@ class Estado(Enum):
 class ModoCpu(Enum):
     LIVRE = "livre"
     TROCA = "troca"
-    EXEC = "exec"
-
-
-Subst = Literal["fifo", "lru"]
-Escalonador = Literal["fcfs", "sjf", "rr"]
+    EXECUTANDO = "executando"
 
 
 @dataclass(frozen=True, slots=True)
 class BurstCPU:
-    cpu: int
-    refs: tuple[int, ...]
+    duracao_de_cpu: int
+    paginas_referenciadas_no_burst: tuple[int, ...]
 
 
 @dataclass(frozen=True, slots=True)
 class BurstES:
-    es: int
+    duracao_de_entrada_saida: int
 
 
 Burst = BurstCPU | BurstES
@@ -50,29 +45,31 @@ class Processo:
     classe: str
     paginas: int
     bursts: tuple[Burst, ...]
-    indice_burst: int = 0
-    unidades_feitas: int = 0
+    indice_do_burst_atual: int = 0
+    unidades_de_cpu_ja_executadas: int = 0
     estado: Estado = Estado.NOVO
     espera: int = 0
-    pronto_desde: int | None = None
-    entrada_seq: int = 0
-    primeiro_despacho: int | None = None
-    termino: int | None = None
-    retorno: int | None = None
+    instante_em_que_entrou_na_fila_de_prontos: int | None = None
+    ordem_de_entrada_na_fila_de_prontos: int = 0
+    instante_do_primeiro_despacho: int | None = None
+    instante_de_termino: int | None = None
+    instante_de_retorno_do_bloqueio: int | None = None
     motivo_bloqueio: str | None = None
-    falta_ja_contada: bool = False
+    falta_de_pagina_ja_contabilizada: bool = False
 
     def burst_cpu_atual(self) -> BurstCPU:
-        burst = self.bursts[self.indice_burst]
+        burst = self.bursts[self.indice_do_burst_atual]
         if not isinstance(burst, BurstCPU):
             raise RuntimeError(f"processo {self.pid} não está em burst de CPU")
         return burst
 
-    def burst_restante(self) -> int:
-        return self.burst_cpu_atual().cpu - self.unidades_feitas
+    def unidades_de_cpu_restantes_no_burst(self) -> int:
+        burst_de_cpu = self.burst_cpu_atual()
+        return burst_de_cpu.duracao_de_cpu - self.unidades_de_cpu_ja_executadas
 
-    def ref_atual(self) -> int:
-        return self.burst_cpu_atual().refs[self.unidades_feitas]
+    def pagina_referenciada_na_unidade_atual(self) -> int:
+        burst_de_cpu = self.burst_cpu_atual()
+        return burst_de_cpu.paginas_referenciadas_no_burst[self.unidades_de_cpu_ja_executadas]
 
 
 @dataclass(eq=False)
@@ -80,10 +77,10 @@ class Cpu:
     indice: int
     modo: ModoCpu = ModoCpu.LIVRE
     processo: Processo | None = None
-    troca_restante: int = 0
-    quantum_restante: int = 0
-    ultimo_pid: int | None = None
-    concluiu_unidade: bool = False
+    unidades_restantes_da_troca_de_contexto: int = 0
+    unidades_restantes_do_quantum: int = 0
+    pid_do_ultimo_processo_nesta_cpu: int | None = None
+    executou_unidade_de_cpu: bool = False
     tempo_util: int = 0
     tempo_troca: int = 0
     tempo_ocioso: int = 0
@@ -94,8 +91,8 @@ class Cpu:
         if inicio >= fim:
             return
         if self.gantt and self.gantt[-1][2] == evento and self.gantt[-1][1] == inicio:
-            ini, _, ev = self.gantt[-1]
-            self.gantt[-1] = (ini, fim, ev)
+            inicio_anterior, _, rotulo = self.gantt[-1]
+            self.gantt[-1] = (inicio_anterior, fim, rotulo)
             return
         self.gantt.append((inicio, fim, evento))
 
@@ -104,23 +101,23 @@ class Cpu:
 class Parametros:
     arquivo: str
     cpus: int
-    sched: str
+    algoritmo_de_escalonamento: str
     quantum: int | None
-    subst: str
+    algoritmo_de_substituicao_de_pagina: str
     quadros: int
     custo_troca: int = 1
     tempo_fault: int = 20
     ignorar_memoria: bool = False
     log: bool = False
-    referencia_1cpu: str | None = None
+    arquivo_de_metricas_com_1_cpu: str | None = None
     saida: str | None = None
 
     def __post_init__(self) -> None:
         if self.cpus not in (1, 4):
             raise ValueError("--cpus aceita apenas 1 ou 4")
-        if self.sched not in ("fcfs", "sjf", "rr"):
+        if self.algoritmo_de_escalonamento not in ("fcfs", "sjf", "rr"):
             raise ValueError("--sched aceita fcfs, sjf ou rr")
-        if self.subst not in ("fifo", "lru"):
+        if self.algoritmo_de_substituicao_de_pagina not in ("fifo", "lru"):
             raise ValueError("--subst aceita fifo ou lru")
         if self.quadros < 1:
             raise ValueError("--quadros deve ser pelo menos 1")
@@ -128,7 +125,7 @@ class Parametros:
             raise ValueError("--custo-troca não pode ser negativo")
         if self.tempo_fault < 1:
             raise ValueError("--tempo-fault deve ser pelo menos 1")
-        if self.sched == "rr":
+        if self.algoritmo_de_escalonamento == "rr":
             if self.quantum is None or self.quantum < 1:
                 raise ValueError("--quantum é obrigatório no RR e deve ser pelo menos 1")
         elif self.quantum is not None:

@@ -9,47 +9,47 @@ from typing import cast
 from simulador.modelos import Burst, BurstCPU, BurstES, Processo
 
 
-def carregar(caminho: Path) -> list[Processo]:
+def carregar_processos(caminho: Path) -> list[Processo]:
     try:
-        bruto = json.loads(caminho.read_text(encoding="utf-8"))
+        conteudo_json = json.loads(caminho.read_text(encoding="utf-8"))
     except FileNotFoundError as exc:
         raise ValueError(f"arquivo não encontrado: {caminho}") from exc
     except json.JSONDecodeError as exc:
         raise ValueError(f"JSON inválido em {caminho}: {exc}") from exc
-    if not isinstance(bruto, list):
+    if not isinstance(conteudo_json, list):
         raise ValueError("o JSON deve ser uma lista de processos")
 
     processos: list[Processo] = []
-    vistos: set[int] = set()
-    for indice, item in enumerate(bruto):
+    pids_ja_lidos: set[int] = set()
+    for indice, item in enumerate(conteudo_json):
         if not isinstance(item, dict):
             raise ValueError(f"processo na posição {indice} não é um objeto")
-        processo = _processo(cast(dict[str, object], item))
-        if processo.pid in vistos:
+        processo = _ler_processo(cast(dict[str, object], item))
+        if processo.pid in pids_ja_lidos:
             raise ValueError(f"pid duplicado: {processo.pid}")
-        vistos.add(processo.pid)
+        pids_ja_lidos.add(processo.pid)
         processos.append(processo)
     return processos
 
 
-def _processo(item: dict[str, object]) -> Processo:
-    pid = _inteiro(item, "pid")
-    chegada = _inteiro(item, "chegada")
+def _ler_processo(item: dict[str, object]) -> Processo:
+    pid = _ler_inteiro_nao_negativo(item, "pid")
+    chegada = _ler_inteiro_nao_negativo(item, "chegada")
     classe = item.get("classe")
-    paginas = _inteiro(item, "paginas")
+    paginas = _ler_inteiro_nao_negativo(item, "paginas")
     if not isinstance(classe, str) or not classe:
         raise ValueError(f"processo {pid}: classe ausente")
     if paginas < 1:
         raise ValueError(f"processo {pid}: paginas deve ser pelo menos 1")
-    bursts_brutos = item.get("bursts")
-    if not isinstance(bursts_brutos, list) or not bursts_brutos:
+    bursts_no_json = item.get("bursts")
+    if not isinstance(bursts_no_json, list) or not bursts_no_json:
         raise ValueError(f"processo {pid}: bursts vazio")
 
     bursts: list[Burst] = []
-    for etapa in bursts_brutos:
-        if not isinstance(etapa, dict):
+    for descricao_do_burst in bursts_no_json:
+        if not isinstance(descricao_do_burst, dict):
             raise ValueError(f"processo {pid}: etapa inválida em bursts")
-        bursts.append(_burst(pid, paginas, cast(dict[str, object], etapa)))
+        bursts.append(_ler_burst(pid, paginas, cast(dict[str, object], descricao_do_burst)))
     if not isinstance(bursts[0], BurstCPU) or not isinstance(bursts[-1], BurstCPU):
         raise ValueError(f"processo {pid}: a vida começa e termina com burst de CPU")
     for indice in range(len(bursts) - 1):
@@ -64,29 +64,45 @@ def _processo(item: dict[str, object]) -> Processo:
     )
 
 
-def _burst(pid: int, paginas: int, etapa: dict[str, object]) -> Burst:
-    if "cpu" in etapa:
-        cpu = etapa["cpu"]
-        refs = etapa.get("refs")
-        if not isinstance(cpu, int) or isinstance(cpu, bool) or cpu < 1:
+def _ler_burst(pid: int, paginas: int, descricao_do_burst: dict[str, object]) -> Burst:
+    if "cpu" in descricao_do_burst:
+        duracao_de_cpu = descricao_do_burst["cpu"]
+        paginas_no_json = descricao_do_burst.get("refs")
+        if (
+            not isinstance(duracao_de_cpu, int)
+            or isinstance(duracao_de_cpu, bool)
+            or duracao_de_cpu < 1
+        ):
             raise ValueError(f"processo {pid}: cpu inválido")
-        if not isinstance(refs, list) or len(refs) != cpu:
-            raise ValueError(f"processo {pid}: refs deve ter exatamente {cpu} páginas")
-        paginas_ref: list[int] = []
-        for ref in refs:
-            if not isinstance(ref, int) or isinstance(ref, bool) or not 0 <= ref < paginas:
+        if not isinstance(paginas_no_json, list) or len(paginas_no_json) != duracao_de_cpu:
+            raise ValueError(f"processo {pid}: refs deve ter exatamente {duracao_de_cpu} páginas")
+        numeros_de_pagina: list[int] = []
+        for numero_de_pagina in paginas_no_json:
+            pagina_valida = (
+                isinstance(numero_de_pagina, int)
+                and not isinstance(numero_de_pagina, bool)
+                and 0 <= numero_de_pagina < paginas
+            )
+            if not pagina_valida:
                 raise ValueError(f"processo {pid}: referência fora do intervalo de páginas")
-            paginas_ref.append(ref)
-        return BurstCPU(cpu=cpu, refs=tuple(paginas_ref))
-    if "es" in etapa:
-        es = etapa["es"]
-        if not isinstance(es, int) or isinstance(es, bool) or es < 1:
+            numeros_de_pagina.append(numero_de_pagina)
+        return BurstCPU(
+            duracao_de_cpu=duracao_de_cpu,
+            paginas_referenciadas_no_burst=tuple(numeros_de_pagina),
+        )
+    if "es" in descricao_do_burst:
+        duracao_de_entrada_saida = descricao_do_burst["es"]
+        if (
+            not isinstance(duracao_de_entrada_saida, int)
+            or isinstance(duracao_de_entrada_saida, bool)
+            or duracao_de_entrada_saida < 1
+        ):
             raise ValueError(f"processo {pid}: es inválido")
-        return BurstES(es=es)
+        return BurstES(duracao_de_entrada_saida=duracao_de_entrada_saida)
     raise ValueError(f"processo {pid}: etapa sem cpu nem es")
 
 
-def _inteiro(item: dict[str, object], campo: str) -> int:
+def _ler_inteiro_nao_negativo(item: dict[str, object], campo: str) -> int:
     valor = item.get(campo)
     if not isinstance(valor, int) or isinstance(valor, bool) or valor < 0:
         raise ValueError(f"campo {campo} deve ser um inteiro >= 0")

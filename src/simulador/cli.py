@@ -9,45 +9,45 @@ from pathlib import Path
 from simulador.metricas import Resultado
 from simulador.modelos import Parametros
 from simulador.nucleo import simular
-from simulador.saida import gravar, imprimir
+from simulador.saida import gravar_gantt_e_metricas, imprimir_resumo
 
 
 def main(argv: list[str] | None = None) -> int:
-    parser = _parser()
+    parser = _montar_argumentos()
     args = parser.parse_args(argv)
     quantum = args.quantum if args.sched == "rr" else None
     try:
         parametros = Parametros(
             arquivo=args.arquivo,
             cpus=args.cpus,
-            sched=args.sched,
+            algoritmo_de_escalonamento=args.sched,
             quantum=quantum,
-            subst=args.subst,
+            algoritmo_de_substituicao_de_pagina=args.subst,
             quadros=args.quadros,
             custo_troca=args.custo_troca,
             tempo_fault=args.tempo_fault,
             ignorar_memoria=args.ignorar_memoria,
             log=args.log,
-            referencia_1cpu=args.referencia_1cpu,
+            arquivo_de_metricas_com_1_cpu=args.referencia_1cpu,
             saida=args.saida,
         )
         resultado = simular(parametros)
     except (ValueError, RuntimeError, OSError) as exc:
         print(f"erro: {exc}", file=sys.stderr)
         return 2
-    _publicar(resultado)
+    _imprimir_resumo_e_gravar_arquivos(resultado)
     return 0
 
 
-def _publicar(resultado: Resultado) -> None:
-    imprimir(resultado)
+def _imprimir_resumo_e_gravar_arquivos(resultado: Resultado) -> None:
+    imprimir_resumo(resultado)
     if resultado.parametros.saida is not None:
-        gantt, metricas = gravar(resultado, Path(resultado.parametros.saida))
+        gantt, metricas = gravar_gantt_e_metricas(resultado, Path(resultado.parametros.saida))
         print(f"gantt: {gantt}")
         print(f"metricas: {metricas}")
 
 
-def _parser() -> argparse.ArgumentParser:
+def _montar_argumentos() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="simulador",
         description="Simulador de escalonamento multiprocessado com paginação sob demanda.",
