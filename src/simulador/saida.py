@@ -1,4 +1,4 @@
-"""Resumo padronizado, Gantt da janela 0 a 200 e log de estados."""
+"""Resumo padronizado e Gantt da janela 0 a 200."""
 
 from __future__ import annotations
 
@@ -123,9 +123,6 @@ def gravar_gantt_e_metricas(resultado: Resultado, diretorio: Path) -> tuple[Path
         json.dumps(resultado_para_dicionario(resultado), indent=2),
         encoding="utf-8",
     )
-    if resultado.parametros.log:
-        log = base.with_name(base.name + "_log.txt")
-        log.write_text("\n".join(resultado.log) + ("\n" if resultado.log else ""), encoding="utf-8")
     return gantt, metricas
 
 

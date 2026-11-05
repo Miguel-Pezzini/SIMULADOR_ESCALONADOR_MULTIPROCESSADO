@@ -55,7 +55,6 @@ def rodar(
     custo_troca: int = 1,
     tempo_fault: int = 20,
     ignorar_memoria: bool = False,
-    log: bool = False,
     arquivo_de_metricas_com_1_cpu: str | None = None,
     saida: str | None = None,
 ) -> Resultado:
@@ -70,7 +69,6 @@ def rodar(
             custo_troca=custo_troca,
             tempo_fault=tempo_fault,
             ignorar_memoria=ignorar_memoria,
-            log=log,
             arquivo_de_metricas_com_1_cpu=arquivo_de_metricas_com_1_cpu,
             saida=saida,
         )

@@ -41,18 +41,10 @@ def test_quantum_no_fim_com_fila_vazia_nao_cobra_troca(tmp_path: Path) -> None:
         ignorar_memoria=True,
         custo_troca=1,
     )
-    com_log = rodar(
-        caminho,
-        algoritmo_de_escalonamento="rr",
-        quantum=2,
-        ignorar_memoria=True,
-        log=True,
-    )
     assert resultado.makespan == 6
     assert resultado.total_de_trocas_de_contexto() == 1
     assert resultado.cpus[0].tempo_util == 5
     assert resultado.cpus[0].tempo_troca == 1
-    assert any("RENOVACAO_QUANTUM" in linha for linha in com_log.log)
     conferir_se_os_tempos_das_cpus_fecham_o_makespan(resultado)
 
 

@@ -58,17 +58,10 @@ class Simulador:
         )
         self.quantidade_de_faltas_de_pagina = 0
         self.contador_de_entradas_na_fila_de_prontos = 0
-        self.log: list[str] = []
-        self.instante_limite_de_seguranca = self._calcular_instante_limite_de_seguranca()
 
     def executar(self) -> Resultado:
         instante = 0
         while True:
-            if instante > self.instante_limite_de_seguranca:
-                raise RuntimeError(
-                    "simulação excedeu o instante limite de segurança "
-                    f"({self.instante_limite_de_seguranca})"
-                )
             self._processar_instante(instante)
             if all(processo.estado is Estado.TERMINADO for processo in self.processos):
                 return self._montar_resultado(instante)
@@ -87,9 +80,8 @@ class Simulador:
     def _processar_instante(self, instante: int) -> None:
         if not self.parametros.ignorar_memoria:
             self.memoria.liberar_paginas_em_uso_por_uma_cpu()
-        for entrada in self._processos_que_entram_na_fila_de_prontos(instante):
-            self._colocar_processo_na_fila_de_prontos(entrada[0], instante)
-            self._registrar_evento_no_log(instante, entrada[1], entrada[0].pid)
+        for processo in self._processos_que_entram_na_fila_de_prontos(instante):
+            self._colocar_processo_na_fila_de_prontos(processo, instante)
         for cpu in self.cpus:
             if cpu.modo is ModoCpu.TROCA and cpu.unidades_restantes_da_troca_de_contexto == 0:
                 self._consultar_pagina_na_memoria(cpu, instante)
@@ -100,8 +92,8 @@ class Simulador:
         if self.fila_de_prontos and all(cpu.modo is ModoCpu.LIVRE for cpu in self.cpus):
             raise RuntimeError("fila de prontos não vazia com todas as CPUs livres")
 
-    def _processos_que_entram_na_fila_de_prontos(self, instante: int) -> list[tuple[Processo, str]]:
-        processos_que_entram: list[tuple[Processo, str]] = []
+    def _processos_que_entram_na_fila_de_prontos(self, instante: int) -> list[Processo]:
+        processos_que_entram: list[Processo] = []
         ordenados = self.processos_ordenados_por_chegada
         while self.indice_da_proxima_chegada_de_processo < len(ordenados):
             processo = ordenados[self.indice_da_proxima_chegada_de_processo]
@@ -110,7 +102,7 @@ class Simulador:
             if processo.chegada < instante:
                 raise RuntimeError(f"chegada do processo {processo.pid} foi pulada")
             self.indice_da_proxima_chegada_de_processo += 1
-            processos_que_entram.append((processo, "CHEGADA"))
+            processos_que_entram.append(processo)
         pids_que_retornam = [
             pid
             for pid, quando in self.instante_de_retorno_por_pid_bloqueado.items()
@@ -118,13 +110,8 @@ class Simulador:
         ]
         for pid in pids_que_retornam:
             del self.instante_de_retorno_por_pid_bloqueado[pid]
-            processo = self.processo_por_pid[pid]
-            if processo.motivo_bloqueio == "falta_de_pagina":
-                evento = "RETORNO_FALTA"
-            else:
-                evento = "RETORNO_ES"
-            processos_que_entram.append((processo, evento))
-        processos_que_entram.sort(key=lambda item: item[0].pid)
+            processos_que_entram.append(self.processo_por_pid[pid])
+        processos_que_entram.sort(key=lambda processo: processo.pid)
         return processos_que_entram
 
     def _colocar_processo_na_fila_de_prontos(self, processo: Processo, instante: int) -> None:
@@ -146,13 +133,11 @@ class Simulador:
         if self.parametros.quantum is not None and cpu.unidades_restantes_do_quantum == 0:
             if not self.fila_de_prontos:
                 cpu.unidades_restantes_do_quantum = self.parametros.quantum
-                self._registrar_evento_no_log(instante, "RENOVACAO_QUANTUM", processo.pid)
                 self._consultar_pagina_na_memoria(cpu, instante)
                 return
             cpu.modo = ModoCpu.LIVRE
             cpu.processo = None
             self._colocar_processo_na_fila_de_prontos(processo, instante)
-            self._registrar_evento_no_log(instante, "PREEMPCAO", processo.pid)
             return
         self._consultar_pagina_na_memoria(cpu, instante)
 
@@ -164,17 +149,14 @@ class Simulador:
         if processo.indice_do_burst_atual >= len(processo.bursts):
             processo.estado = Estado.TERMINADO
             processo.instante_de_termino = instante
-            processo.motivo_bloqueio = None
             if not self.parametros.ignorar_memoria:
                 self.memoria.liberar_quadros_do_processo(processo.pid)
-            self._registrar_evento_no_log(instante, "TERMINO", processo.pid)
             return
         burst = processo.bursts[processo.indice_do_burst_atual]
         if not isinstance(burst, BurstES):
             raise RuntimeError(f"processo {processo.pid} deveria entrar em E/S")
         processo.indice_do_burst_atual += 1
-        self._bloquear_processo(processo, instante, "entrada_saida", burst.duracao_de_entrada_saida)
-        self._registrar_evento_no_log(instante, "INICIO_ES", processo.pid)
+        self._bloquear_processo(processo, instante, burst.duracao_de_entrada_saida)
 
     def _despachar_processos_nas_cpus_livres(self, instante: int) -> None:
         while True:
@@ -208,7 +190,6 @@ class Simulador:
         cpu.executou_unidade_de_cpu = False
         if self.parametros.quantum is not None:
             cpu.unidades_restantes_do_quantum = self.parametros.quantum
-        self._registrar_evento_no_log(instante, "DESPACHO", processo.pid)
         if pid_do_processo_anterior != processo.pid and self.parametros.custo_troca > 0:
             cpu.modo = ModoCpu.TROCA
             cpu.unidades_restantes_da_troca_de_contexto = self.parametros.custo_troca
@@ -235,31 +216,16 @@ class Simulador:
             if not processo.falta_de_pagina_ja_contabilizada:
                 self.quantidade_de_faltas_de_pagina += 1
             processo.falta_de_pagina_ja_contabilizada = False
-            evento = "PAGE_FAULT"
         else:
             if not processo.falta_de_pagina_ja_contabilizada:
                 self.quantidade_de_faltas_de_pagina += 1
                 processo.falta_de_pagina_ja_contabilizada = True
-            evento = "SEM_VITIMA"
         cpu.modo = ModoCpu.LIVRE
         cpu.processo = None
-        self._bloquear_processo(
-            processo,
-            instante,
-            "falta_de_pagina",
-            self.parametros.tempo_fault,
-        )
-        self._registrar_evento_no_log(instante, evento, processo.pid)
+        self._bloquear_processo(processo, instante, self.parametros.tempo_fault)
 
-    def _bloquear_processo(
-        self,
-        processo: Processo,
-        instante: int,
-        motivo: str,
-        duracao: int,
-    ) -> None:
+    def _bloquear_processo(self, processo: Processo, instante: int, duracao: int) -> None:
         processo.estado = Estado.BLOQUEADO
-        processo.motivo_bloqueio = motivo
         processo.instante_de_retorno_do_bloqueio = instante + duracao
         processo.instante_em_que_entrou_na_fila_de_prontos = None
         self.instante_de_retorno_por_pid_bloqueado[processo.pid] = (
@@ -301,30 +267,6 @@ class Simulador:
         if not instantes_futuros:
             return None
         return min(instantes_futuros)
-
-    def _registrar_evento_no_log(self, instante: int, evento: str, pid: int | None) -> None:
-        if not self.parametros.log:
-            return
-        pids_na_fila = ",".join(str(processo.pid) for processo in self.fila_de_prontos) or "-"
-        texto_dos_bloqueados = ",".join(
-            f"{pid_bloqueado}:{quando}"
-            for pid_bloqueado, quando in sorted(self.instante_de_retorno_por_pid_bloqueado.items())
-        )
-        if not texto_dos_bloqueados:
-            texto_dos_bloqueados = "-"
-        texto_das_cpus = ",".join(
-            f"{cpu.indice}:{'-' if cpu.processo is None else cpu.processo.pid}" for cpu in self.cpus
-        )
-        pid_txt = "-" if pid is None else str(pid)
-        if self.parametros.ignorar_memoria:
-            quadros_ocupados = 0
-        else:
-            quadros_ocupados = self.memoria.quantidade_de_quadros_ocupados()
-        self.log.append(
-            f"t={instante} evento={evento} pid={pid_txt} fila=[{pids_na_fila}] "
-            f"bloqueados=[{texto_dos_bloqueados}] cpus=[{texto_das_cpus}] "
-            f"quadros={quadros_ocupados}"
-        )
 
     def _montar_resultado(self, instante_final: int) -> Resultado:
         metricas_dos_processos: list[ProcessoMetrica] = []
@@ -368,22 +310,7 @@ class Simulador:
             page_faults=faltas_de_pagina,
             acertos=acertos,
             makespan=instante_final,
-            log=list(self.log),
         )
-
-    def _calcular_instante_limite_de_seguranca(self) -> int:
-        soma_duracao_de_cpu = 0
-        soma_duracao_de_entrada_saida = 0
-        for processo in self.processos:
-            for burst in processo.bursts:
-                if isinstance(burst, BurstES):
-                    soma_duracao_de_entrada_saida += burst.duracao_de_entrada_saida
-                else:
-                    soma_duracao_de_cpu += burst.duracao_de_cpu
-        chegada_mais_tardia = max((processo.chegada for processo in self.processos), default=0)
-        folga_de_faltas = soma_duracao_de_cpu * self.parametros.tempo_fault
-        trabalho = soma_duracao_de_cpu + soma_duracao_de_entrada_saida + folga_de_faltas
-        return chegada_mais_tardia + trabalho * 5 + 10
 
 
 def simular(parametros: Parametros) -> Resultado:

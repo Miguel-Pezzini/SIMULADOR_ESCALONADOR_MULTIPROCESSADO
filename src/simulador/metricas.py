@@ -43,7 +43,6 @@ class Resultado:
     page_faults: int
     acertos: int
     makespan: int
-    log: list[str]
     speedup: float | None = None
     eficiencia: float | None = None
 

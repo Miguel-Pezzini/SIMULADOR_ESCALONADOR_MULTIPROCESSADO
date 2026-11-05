@@ -27,7 +27,6 @@ def main(argv: list[str] | None = None) -> int:
             custo_troca=args.custo_troca,
             tempo_fault=args.tempo_fault,
             ignorar_memoria=args.ignorar_memoria,
-            log=args.log,
             arquivo_de_metricas_com_1_cpu=args.referencia_1cpu,
             saida=args.saida,
         )
@@ -70,7 +69,6 @@ def _montar_argumentos() -> argparse.ArgumentParser:
         action="store_true",
         help="desliga a paginação, para reproduzir o exemplo sem memória",
     )
-    parser.add_argument("--log", action="store_true", help="grava o log de estados")
     parser.add_argument(
         "--referencia-1cpu",
         help="JSON de métricas da rodada com 1 CPU, para calcular speedup e eficiência",
@@ -78,6 +76,6 @@ def _montar_argumentos() -> argparse.ArgumentParser:
     parser.add_argument(
         "--saida",
         default="resultados",
-        help="diretório do Gantt, das métricas e do log (padrão: resultados)",
+        help="diretório do Gantt e das métricas (padrão: resultados)",
     )
     return parser

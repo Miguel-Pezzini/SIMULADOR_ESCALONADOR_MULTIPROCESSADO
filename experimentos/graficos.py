@@ -9,6 +9,8 @@ from pathlib import Path
 os.environ.setdefault("MPLBACKEND", "Agg")
 
 import matplotlib.pyplot as plt  # noqa: E402
+from matplotlib.axes import Axes  # noqa: E402
+from matplotlib.container import BarContainer  # noqa: E402
 from matplotlib.patches import Patch  # noqa: E402
 
 RAIZ = Path(__file__).resolve().parents[1]
@@ -25,10 +27,25 @@ ROTULOS = (
 )
 
 
+METRICAS = (
+    ("espera_media", "Espera média", "espera_media.png", "tempo"),
+    ("espera_max", "Espera máxima", "espera_max.png", "tempo"),
+    ("turnaround_medio", "Turnaround médio", "turnaround.png", "tempo"),
+    ("resposta_media", "Resposta média", "resposta.png", "tempo"),
+    ("makespan", "Makespan", "makespan.png", "tempo"),
+    ("page_faults", "Page faults", "page_faults.png", "contagem"),
+    ("trocas_contexto", "Trocas de contexto", "trocas_contexto.png", "contagem"),
+    ("taxa_faults", "Taxa de page faults", "taxa_faults.png", "taxa"),
+)
+COR_1_CPU = "#2563eb"
+COR_4_CPUS = "#059669"
+
+
 def main() -> None:
     linhas = _ler_csv(PASTA / "metricas.csv")
     GRAFICOS.mkdir(parents=True, exist_ok=True)
-    _espera(linhas)
+    for campo, titulo, arquivo, tipo in METRICAS:
+        _comparar(linhas, campo, titulo, arquivo, tipo)
     _quantum(linhas)
     _speedup(linhas)
     _gantt("cpu1")
@@ -57,33 +74,83 @@ def _base(linhas: list[dict[str, str]], cenario: str, cpus: str) -> list[dict[st
     return achados
 
 
-def _espera(linhas: list[dict[str, str]]) -> None:
-    fig, eixos = plt.subplots(1, 2, figsize=(12, 4.5), sharey=False)
+def _comparar(
+    linhas: list[dict[str, str]],
+    campo: str,
+    titulo: str,
+    arquivo: str,
+    tipo: str,
+) -> None:
+    fig, eixos = plt.subplots(1, 2, figsize=(13.5, 6.2), sharey=False)
+    posicoes = list(range(len(ROTULOS)))
+    largura = 0.38
     for eixo, cenario in zip(eixos, ("A", "B"), strict=True):
         com_1_cpu = _base(linhas, cenario, "1")
         com_4_cpus = _base(linhas, cenario, "4")
-        posicoes = list(range(len(ROTULOS)))
-        largura = 0.38
-        eixo.bar(
+        valores_1 = [_valor(linha[campo], tipo) for linha in com_1_cpu]
+        valores_4 = [_valor(linha[campo], tipo) for linha in com_4_cpus]
+        barras_1 = eixo.bar(
             [p - largura / 2 for p in posicoes],
-            [float(linha["espera_media"]) for linha in com_1_cpu],
+            valores_1,
             width=largura,
+            color=COR_1_CPU,
             label="1 CPU",
         )
-        eixo.bar(
+        barras_4 = eixo.bar(
             [p + largura / 2 for p in posicoes],
-            [float(linha["espera_media"]) for linha in com_4_cpus],
+            valores_4,
             width=largura,
+            color=COR_4_CPUS,
             label="4 CPUs",
         )
+        _rotular(eixo, barras_1, valores_1, tipo)
+        _rotular(eixo, barras_4, valores_4, tipo)
         eixo.set_xticks(posicoes, [rotulo for _s, _q, rotulo in ROTULOS])
         eixo.set_title(f"Cenário {cenario}")
-        eixo.set_ylabel("Espera média")
+        eixo.set_ylabel(_unidade(titulo, tipo))
+        eixo.set_ylim(0, max(valores_1 + valores_4) * 1.28)
+        eixo.yaxis.grid(True, linestyle=":", linewidth=0.6, alpha=0.7)
+        eixo.set_axisbelow(True)
         eixo.legend()
-    fig.suptitle("Espera média por escalonador (LRU, 256 quadros)")
+    fig.suptitle(f"{titulo} por escalonador (LRU, 256 quadros)")
     fig.tight_layout()
-    fig.savefig(GRAFICOS / "espera_media.png", dpi=140)
+    fig.savefig(GRAFICOS / arquivo, dpi=140)
     plt.close(fig)
+
+
+def _valor(texto: str, tipo: str) -> float:
+    numero = float(texto)
+    if tipo == "taxa":
+        return numero * 100
+    return numero
+
+
+def _unidade(titulo: str, tipo: str) -> str:
+    if tipo == "taxa":
+        return "Taxa de page faults (%)"
+    return titulo
+
+
+def _rotular(eixo: Axes, barras: BarContainer, valores: list[float], tipo: str) -> None:
+    for barra, valor in zip(barras, valores, strict=True):
+        eixo.annotate(
+            _texto(valor, tipo),
+            xy=(barra.get_x() + barra.get_width() / 2, barra.get_height()),
+            xytext=(0, 2),
+            textcoords="offset points",
+            ha="center",
+            va="bottom",
+            rotation=90,
+            fontsize=7,
+        )
+
+
+def _texto(valor: float, tipo: str) -> str:
+    if tipo == "taxa":
+        return f"{valor:.1f}".replace(".", ",")
+    if valor < 100:
+        return f"{valor:.1f}".replace(".", ",")
+    return f"{valor:.0f}"
 
 
 def _quantum(linhas: list[dict[str, str]]) -> None:

@@ -453,9 +453,6 @@ def _implementacao(doc: Documento) -> None:
         doc,
         "Ao final de cada execução o simulador grava o resumo da seção 9,",
         "o JSON de métricas e o Gantt da janela de 0 a 200, no formato cpu, início, fim, evento.",
-        "A opção de log registra, a cada mudança de estado, o evento, a fila de prontos,",
-        "os bloqueados com o instante de retorno, o processo em cada CPU",
-        "e a quantidade de quadros ocupados.",
     )
 
 

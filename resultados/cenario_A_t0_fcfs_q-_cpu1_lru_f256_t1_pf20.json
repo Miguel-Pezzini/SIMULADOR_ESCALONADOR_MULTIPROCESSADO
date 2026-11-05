@@ -1,5 +1,5 @@
 {
-  "arquivo": "/home/user/SIMULADOR_ESCALONADOR_MULTIPROCESSADO/dados/cenario_A_t0.json",
+  "arquivo": "dados/cenario_A_t0.json",
   "cpus": 1,
   "sched": "fcfs",
   "quantum": null,

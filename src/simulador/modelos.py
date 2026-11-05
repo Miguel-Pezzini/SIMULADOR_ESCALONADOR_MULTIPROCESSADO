@@ -54,7 +54,6 @@ class Processo:
     instante_do_primeiro_despacho: int | None = None
     instante_de_termino: int | None = None
     instante_de_retorno_do_bloqueio: int | None = None
-    motivo_bloqueio: str | None = None
     falta_de_pagina_ja_contabilizada: bool = False
 
     def burst_cpu_atual(self) -> BurstCPU:
@@ -108,7 +107,6 @@ class Parametros:
     custo_troca: int = 1
     tempo_fault: int = 20
     ignorar_memoria: bool = False
-    log: bool = False
     arquivo_de_metricas_com_1_cpu: str | None = None
     saida: str | None = None
 

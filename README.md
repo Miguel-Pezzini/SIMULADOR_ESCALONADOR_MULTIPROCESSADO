@@ -25,9 +25,19 @@ simulador \
 
 Também vale `python -m simulador` com os mesmos argumentos. A saída no terminal é o resumo da seção 9. O Gantt da janela 0 a 200 e o JSON de métricas vão para `resultados/`.
 
-Argumentos: `--arquivo`, `--cpus` (1 ou 4), `--sched` (`fcfs`, `sjf`, `rr`), `--quantum` (obrigatório no RR), `--subst` (`fifo` ou `lru`), `--quadros` (padrão 256), `--custo-troca` (padrão 1), `--log`.
-
-Dois argumentos extras reproduzem o enunciado sem editar código: `--tempo-fault` (padrão 20; o exemplo 7.2 usa 5) e `--ignorar-memoria` (o exemplo 7.1 não tem paginação).
+| Parâmetro | Valores | Impacto |
+| --- | --- | --- |
+| `--arquivo` | caminho do JSON, obrigatório | Define a carga: chegada, bursts de CPU com as páginas referenciadas e bursts de E/S. A classe (curto ou longo) aparece nas métricas, e nenhum escalonador a usa para escolher o próximo processo. |
+| `--cpus` | `1` ou `4`, obrigatório | Número de CPUs que retiram processos da mesma fila de prontos, da de menor índice para a maior. Mais CPUs encurtam o makespan e disputam os mesmos quadros. |
+| `--sched` | `fcfs`, `sjf` ou `rr`, obrigatório | Decide quem executa. FCFS tira a cabeça da fila e não preempta. SJF escolhe o menor pedaço que ainda falta do burst de CPU atual; no empate, fica quem entrou antes na fila; também não preempta. RR tira a cabeça e preempta quando o quantum acaba e há outro processo pronto. |
+| `--quantum` | inteiro ≥ 1; obrigatório no RR e proibido nos outros | Fatia de tempo útil do Round Robin. Troca de contexto e page fault não consomem quantum. No fim da fatia, com alguém na fila, o processo vai para o fim e o próximo despacho pode pagar troca. Com a fila vazia, a fatia renova sem troca. Quantum menor gera mais preempções e trocas; quantum maior se aproxima do FCFS. |
+| `--subst` | `fifo` ou `lru`, obrigatório | Política de substituição quando a memória está ligada e não há quadro livre. FIFO expulsa a página carregada há mais tempo que não esteja protegida nem em uso por uma CPU. LRU expulsa a menos recentemente usada nessas mesmas condições. Isso muda quais referências faltam. Com `--ignorar-memoria`, o valor é aceito e não altera a rodada. |
+| `--quadros` | inteiro ≥ 1, padrão 256 | Quadros da memória física, compartilhados por todas as CPUs. Menos quadros aumentam os page faults. Com `--ignorar-memoria`, o valor é aceito e não altera a rodada. |
+| `--custo-troca` | inteiro ≥ 0, padrão 1 | Unidades em que a CPU fica em troca, sem executar e sem consultar página, quando o processo despachado é diferente do último daquela CPU. O primeiro despacho também paga. Zero elimina esse custo. O mesmo processo que volta à mesma CPU, sem outro no meio, não paga. A renovação de quantum com fila vazia também não paga. |
+| `--tempo-fault` | inteiro ≥ 1, padrão 20 | Tempo em que o processo fica bloqueado depois de um page fault, com página carregada ou sem vítima disponível. Esse intervalo não entra na espera, que só conta o tempo na fila de prontos. Aumenta turnaround e makespan. Sem vítima, a nova tentativa depois desse tempo conta o fault uma única vez. |
+| `--ignorar-memoria` | flag, desligada por padrão | Desliga a paginação. Cada referência executa na hora e não há page fault. Usada no exemplo sem memória. |
+| `--referencia-1cpu` | caminho de um JSON de métricas, opcional | Não altera o escalonamento. Depois da rodada, compara o makespan com o da execução de 1 CPU e preenche speedup e eficiência. Sem esse arquivo, os dois campos ficam vazios. |
+| `--saida` | diretório, padrão `resultados` | Não altera o escalonamento. É o diretório do Gantt de 0 a 200 e do JSON de métricas. O nome do arquivo embute a carga, o escalonador, o quantum, as CPUs, a substituição, os quadros, o custo de troca e o tempo de fault. |
 
 Speedup e eficiência comparam duas rodadas. Grave a de 1 CPU e aponte o JSON na de 4 CPUs:
 

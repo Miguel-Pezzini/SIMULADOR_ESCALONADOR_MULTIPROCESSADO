@@ -11,7 +11,6 @@ def test_faults_nao_entram_na_espera(fixtures: Path) -> None:
         custo_troca=0,
         tempo_fault=5,
         quadros=16,
-        log=True,
     )
     assert resultado.makespan == 13
     assert espera_por_pid(resultado) == {1: 0, 2: 0, 3: 0}
@@ -29,6 +28,4 @@ def test_faults_nao_entram_na_espera(fixtures: Path) -> None:
         (11, 12, "P1"),
         (12, 13, "P2"),
     ]
-    assert any("evento=PAGE_FAULT" in linha for linha in resultado.log)
-    assert any("evento=CHEGADA pid=1" in linha for linha in resultado.log)
     conferir_se_os_tempos_das_cpus_fecham_o_makespan(resultado)
